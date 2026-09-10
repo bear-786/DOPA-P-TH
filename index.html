@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบทะเบียนราษฎร</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chonburi&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FAF6EC;
+    --paper-deep:#F1EADA;
+    --ink:#1E2233;
+    --ink-soft:#5B5A50;
+    --line:#CBBE9E;
+    --line-soft:#E4DAC0;
+    --seal:#8A3B32;
+    --seal-soft:#F1DFD6;
+    --gold:#A07E2F;
+    --ok:#3F6B4A;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Sarabun',sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    min-height:100vh;
+    line-height:1.6;
+  }
+  #app{max-width:900px;margin:0 auto;padding:28px 20px 80px;}
+
+  /* ---------- Header / seal ---------- */
+  .letterhead{
+    display:flex;
+    align-items:center;
+    gap:18px;
+    padding-bottom:18px;
+    border-bottom:3px double var(--line);
+    margin-bottom:22px;
+  }
+  .seal{
+    width:56px;height:56px;flex:none;position:relative;
+  }
+  .seal svg{width:100%;height:100%;}
+  .letterhead h1{
+    font-family:'Chonburi',cursive;
+    font-weight:400;
+    font-size:26px;
+    margin:0 0 2px;
+    color:var(--ink);
+    letter-spacing:.5px;
+  }
+  .letterhead p{
+    margin:0;
+    font-size:13.5px;
+    color:var(--ink-soft);
+  }
+
+  /* ---------- Generic bits ---------- */
+  .row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .muted{color:var(--ink-soft);font-size:13.5px;}
+  .stat{font-family:'Chonburi',cursive;font-size:30px;color:var(--seal);line-height:1;}
+  .stat-label{font-size:13px;color:var(--ink-soft);}
+
+  input,select,button{font-family:'Sarabun',sans-serif;font-size:14.5px;}
+  input,select{
+    width:100%;
+    padding:9px 10px;
+    border:1px solid var(--line);
+    border-radius:3px;
+    background:#fff;
+    color:var(--ink);
+  }
+  input:focus,select:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:var(--gold);}
+  label{display:block;font-size:12.5px;color:var(--ink-soft);margin-bottom:4px;}
+  .field{margin-bottom:14px;}
+
+  button{
+    cursor:pointer;
+    border:1px solid var(--ink);
+    background:var(--ink);
+    color:var(--paper);
+    padding:10px 20px;
+    border-radius:3px;
+    transition:opacity .15s ease;
+  }
+  button:hover{opacity:.85;}
+  button.secondary{
+    background:transparent;color:var(--ink);border:1px solid var(--line);
+  }
+  button.link{
+    background:none;border:none;color:var(--seal);padding:0;text-decoration:underline;
+    text-underline-offset:3px;
+  }
+  button.danger{background:transparent;border:1px solid var(--seal);color:var(--seal);padding:6px 10px;font-size:13px;}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+
+  .search{max-width:260px;}
+
+  /* ---------- Panels ---------- */
+  .panel{
+    background:var(--paper-deep);
+    border:1px solid var(--line-soft);
+    border-radius:4px;
+    padding:22px;
+    margin-bottom:26px;
+  }
+  .panel h2{
+    font-size:17px;
+    margin:0 0 16px;
+    font-weight:600;
+    border-bottom:1px solid var(--line);
+    padding-bottom:10px;
+  }
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0 16px;}
+
+  /* ---------- Table (ledger) ---------- */
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  thead th{
+    text-align:left;
+    font-weight:600;
+    color:var(--ink-soft);
+    border-bottom:2px solid var(--ink);
+    padding:8px 8px;
+    white-space:nowrap;
+  }
+  tbody td{
+    padding:9px 8px;
+    border-bottom:1px solid var(--line-soft);
+    vertical-align:top;
+  }
+  tbody tr:hover{background:rgba(160,126,47,.06);}
+  .idnum{font-variant-numeric:tabular-nums;letter-spacing:.4px;}
+  .empty-row td{color:var(--ink-soft);text-align:center;padding:26px 8px;}
+  .table-wrap{overflow-x:auto;}
+
+  /* ---------- Gate overlay ---------- */
+  .overlay{
+    position:fixed;inset:0;background:rgba(30,34,51,.55);
+    display:flex;align-items:center;justify-content:center;padding:20px;z-index:10;
+  }
+  .gate-card{
+    background:var(--paper);border:1px solid var(--line);border-radius:5px;
+    padding:30px;max-width:340px;width:100%;
+  }
+  .gate-card h3{margin:0 0 4px;font-size:18px;}
+  .gate-card .muted{margin-bottom:18px;}
+  .msg{font-size:13px;padding:8px 10px;border-radius:3px;margin-bottom:14px;}
+  .msg.err{background:var(--seal-soft);color:var(--seal);}
+  .msg.ok{background:#E4EEE6;color:var(--ok);}
+
+  .id-display{
+    display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;
+  }
+  .id-display .idnum{
+    font-size:19px;font-weight:600;background:#fff;border:1px solid var(--line);
+    padding:9px 14px;border-radius:3px;letter-spacing:1px;
+  }
+
+  fieldset{border:none;padding:0;margin:0 0 18px;}
+  legend{font-size:13px;color:var(--seal);font-weight:600;margin-bottom:8px;padding:0;}
+
+  .officer-line{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line-soft);font-size:14px;}
+  .footer-note{font-size:12px;color:var(--ink-soft);text-align:center;margin-top:30px;}
+</style>
+</head>
+<body>
+<div id="app"><p class="muted">กำลังโหลด…</p></div>
+
+<script>
+(function(){
+  const PREFIXES = ["นาย","นาง","นางสาว","เด็กชาย","เด็กหญิง"];
+  const THAI_MONTHS = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+
+  let officers = [];
+  let citizens = [];
+  let loaded = false;
+  let loadError = false;
+
+  let session = null;       // {id, name}
+  let showGate = false;
+  let gateCode = "";
+  let gateMsg = null;
+
+  let search = "";
+  let formMsg = null;
+  let form = blankForm();
+  let newOfficer = {name:"", code:""};
+  let officerMsg = null;
+
+  function blankForm(){
+    return {
+      prefix:"นาย", first:"", last:"", gender:"ชาย", birth:"", nationality:"ไทย",
+      houseNo:"", moo:"", tambon:"", amphoe:"", province:"",
+      idcard: generateId()
+    };
+  }
+
+  // ---------- Thai ID checksum ----------
+  function generateId(){
+    const d = [];
+    d.push(1 + Math.floor(Math.random()*8)); // d1: 1-8
+    for(let i=1;i<12;i++) d.push(Math.floor(Math.random()*10));
+    let sum = 0;
+    for(let i=0;i<12;i++) sum += d[i] * (13 - i);
+    const check = (11 - (sum % 11)) % 10;
+    d.push(check);
+    return d.join("");
+  }
+  function formatId(raw){
+    return raw.slice(0,1)+"-"+raw.slice(1,5)+"-"+raw.slice(5,10)+"-"+raw.slice(10,12)+"-"+raw.slice(12,13);
+  }
+  function maskId(raw){
+    return raw.slice(0,1)+"-XXXX-X"+raw.slice(6,10)+"-XX-"+raw.slice(12,13);
+  }
+  function thaiDate(iso){
+    if(!iso) return "-";
+    const dt = new Date(iso+"T00:00:00");
+    if(isNaN(dt)) return "-";
+    return dt.getDate()+" "+THAI_MONTHS[dt.getMonth()]+" "+(dt.getFullYear()+543);
+  }
+
+  // ---------- Storage ----------
+  async function loadAll(){
+    try{
+      const o = await window.storage.get('officers', true);
+      officers = o ? JSON.parse(o.value) : [];
+    }catch(e){ officers = []; }
+    try{
+      const c = await window.storage.get('citizens', true);
+      citizens = c ? JSON.parse(c.value) : [];
+    }catch(e){ citizens = []; }
+    loaded = true;
+    render();
+  }
+  async function saveOfficers(){
+    try{ await window.storage.set('officers', JSON.stringify(officers), true); return true; }
+    catch(e){ return false; }
+  }
+  async function saveCitizens(){
+    try{ await window.storage.set('citizens', JSON.stringify(citizens), true); return true; }
+    catch(e){ return false; }
+  }
+
+  // ---------- Actions ----------
+  async function submitGate(){
+    gateMsg = null;
+    if(officers.length === 0){
+      if(!newOfficer.name.trim() || !newOfficer.code.trim()){
+        gateMsg = {type:'err', text:'กรุณากรอกชื่อและรหัสของเจ้าหน้าที่'};
+        render(); return;
+      }
+      const rec = {id: crypto.randomUUID(), name:newOfficer.name.trim(), code:newOfficer.code.trim()};
+      officers = [rec];
+      const ok = await saveOfficers();
+      if(!ok){ gateMsg = {type:'err', text:'บันทึกไม่สำเร็จ กรุณาลองใหม่'}; render(); return; }
+      session = {id:rec.id, name:rec.name};
+      showGate = false; gateCode=""; newOfficer={name:"",code:""};
+      form = blankForm();
+      render();
+      return;
+    }
+    const match = officers.find(o => o.code === gateCode.trim());
+    if(!match){
+      gateMsg = {type:'err', text:'รหัสไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง'};
+      render(); return;
+    }
+    session = {id:match.id, name:match.name};
+    showGate = false; gateCode="";
+    form = blankForm();
+    render();
+  }
+
+  function logout(){
+    session = null;
+    render();
+  }
+
+  async function submitCitizen(){
+    formMsg = null;
+    if(!form.first.trim() || !form.last.trim() || !form.birth || !form.province.trim()){
+      formMsg = {type:'err', text:'กรุณากรอก ชื่อ นามสกุล วันเกิด และจังหวัด ให้ครบถ้วน'};
+      render(); return;
+    }
+    const rec = {
+      id: crypto.randomUUID(),
+      idcard: form.idcard,
+      prefix: form.prefix, first: form.first.trim(), last: form.last.trim(),
+      gender: form.gender, birth: form.birth, nationality: form.nationality.trim() || "ไทย",
+      houseNo: form.houseNo.trim(), moo: form.moo.trim(), tambon: form.tambon.trim(),
+      amphoe: form.amphoe.trim(), province: form.province.trim(),
+      registeredBy: session.name, registeredAt: new Date().toISOString()
+    };
+    citizens = [rec, ...citizens];
+    const ok = await saveCitizens();
+    if(!ok){
+      citizens = citizens.filter(c => c.id !== rec.id);
+      formMsg = {type:'err', text:'บันทึกไม่สำเร็จ กรุณาลองใหม่'};
+      render(); return;
+    }
+    formMsg = {type:'ok', text:'บันทึกรายการเรียบร้อย เลขทะเบียนถูกสร้างใหม่แล้ว'};
+    form = blankForm();
+    render();
+  }
+
+  async function deleteCitizen(id){
+    if(!confirm('ยืนยันการลบรายการนี้ออกจากทะเบียน?')) return;
+    const backup = citizens;
+    citizens = citizens.filter(c => c.id !== id);
+    const ok = await saveCitizens();
+    if(!ok){ citizens = backup; formMsg = {type:'err', text:'ลบไม่สำเร็จ กรุณาลองใหม่'}; }
+    render();
+  }
+
+  async function addOfficer(){
+    officerMsg = null;
+    if(!newOfficer.name.trim() || !newOfficer.code.trim()){
+      officerMsg = {type:'err', text:'กรอกชื่อและรหัสให้ครบ'}; render(); return;
+    }
+    if(officers.some(o => o.code === newOfficer.code.trim())){
+      officerMsg = {type:'err', text:'รหัสนี้ถูกใช้งานแล้ว'}; render(); return;
+    }
+    const rec = {id: crypto.randomUUID(), name:newOfficer.name.trim(), code:newOfficer.code.trim()};
+    officers = [...officers, rec];
+    const ok = await saveOfficers();
+    if(!ok){ officers = officers.filter(o=>o.id!==rec.id); officerMsg={type:'err',text:'บันทึกไม่สำเร็จ'}; render(); return; }
+    newOfficer = {name:"", code:""};
+    officerMsg = {type:'ok', text:'เพิ่มเจ้าหน้าที่เรียบร้อย'};
+    render();
+  }
+
+  async function removeOfficer(id){
+    if(officers.length <= 1){ officerMsg={type:'err',text:'ต้องมีเจ้าหน้าที่อย่างน้อย 1 คนในระบบ'}; render(); return; }
+    if(!confirm('ยืนยันการลบเจ้าหน้าที่คนนี้?')) return;
+    const backup = officers;
+    officers = officers.filter(o => o.id !== id);
+    const ok = await saveOfficers();
+    if(!ok){ officers = backup; }
+    render();
+  }
+
+  // ---------- Seal SVG ----------
+  function sealSvg(){
+    return '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">'
+      + '<circle cx="50" cy="50" r="46" fill="none" stroke="var(--gold)" stroke-width="2.5"/>'
+      + '<circle cx="50" cy="50" r="37" fill="none" stroke="var(--seal)" stroke-width="1.2"/>'
+      + '<polygon points="50,28 56,45 74,45 59,56 65,73 50,62 35,73 41,56 26,45 44,45" fill="var(--seal)" opacity="0.85"/>'
+      + '</svg>';
+  }
+
+  // ---------- Render ----------
+  function esc(s){
+    return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+
+  function citizenRows(list, {full}){
+    if(list.length === 0){
+      return '<tr class="empty-row"><td colspan="'+(full?7:6)+'">ยังไม่มีรายการในทะเบียน</td></tr>';
+    }
+    return list.map((c,i)=>{
+      const name = c.prefix+c.first+" "+c.last;
+      const idShown = full ? formatId(c.idcard) : maskId(c.idcard);
+      const addr = [c.tambon && ("ต."+c.tambon), c.amphoe && ("อ."+c.amphoe), c.province && ("จ."+c.province)].filter(Boolean).join(" ");
+      return '<tr>'
+        + '<td>'+(i+1)+'</td>'
+        + '<td class="idnum">'+esc(idShown)+'</td>'
+        + '<td>'+esc(name)+'</td>'
+        + '<td>'+esc(thaiDate(c.birth))+'</td>'
+        + '<td>'+esc(addr || "-")+'</td>'
+        + '<td>'+esc(c.registeredBy)+'</td>'
+        + (full ? '<td><button class="danger" data-del="'+c.id+'">ลบ</button></td>' : '')
+        + '</tr>';
+    }).join('');
+  }
+
+  function render(){
+    const app = document.getElementById('app');
+    if(!loaded){ app.innerHTML = '<p class="muted">กำลังโหลด…</p>'; return; }
+
+    const header = '<div class="letterhead"><div class="seal">'+sealSvg()+'</div><div>'
+      + '<h1>ระบบทะเบียนราษฎร</h1>'
+      + '<p>ทะเบียนกลางแห่งราชอาณาจักร &middot; สำหรับบันทึกและตรวจสอบข้อมูลราษฎร</p>'
+      + '</div></div>';
+
+    let body = "";
+
+    if(!session){
+      const filtered = citizens.filter(c=>{
+        if(!search.trim()) return true;
+        const q = search.trim().toLowerCase();
+        return (c.first+c.last).toLowerCase().includes(q) || c.idcard.includes(q);
+      });
+      body += '<div class="row" style="margin-bottom:20px;">'
+        + '<div><span class="stat">'+citizens.length+'</span> <span class="stat-label">ราย ขึ้นทะเบียนแล้ว</span></div>'
+        + '<button data-open-gate>เข้าสู่ระบบเจ้าหน้าที่</button>'
+        + '</div>';
+      body += '<div class="panel">'
+        + '<h2>ค้นหาทะเบียนราษฎร</h2>'
+        + '<div class="field search"><input id="searchInput" placeholder="ค้นหาชื่อ หรือเลขบัตรประชาชน" value="'+esc(search)+'"></div>'
+        + '<div class="table-wrap"><table><thead><tr><th>ลำดับ</th><th>เลขบัตรประชาชน</th><th>ชื่อ-สกุล</th><th>วันเกิด</th><th>ที่อยู่</th><th>ผู้บันทึก</th></tr></thead>'
+        + '<tbody>'+citizenRows(filtered,{full:false})+'</tbody></table></div>'
+        + '</div>';
+      body += '<p class="footer-note">หมายเลขบัตรประชาชนแสดงบางส่วนเพื่อความเป็นส่วนตัว &middot; เจ้าหน้าที่เท่านั้นที่เห็นเลขเต็ม</p>';
+
+    } else {
+      body += '<div class="row" style="margin-bottom:20px;">'
+        + '<div><strong>สวัสดี, '+esc(session.name)+'</strong><br><span class="muted">สิทธิ์เจ้าหน้าที่ทะเบียนราษฎร</span></div>'
+        + '<div><button class="secondary" data-back>กลับหน้าทะเบียน</button> <button class="secondary" data-logout>ออกจากระบบ</button></div>'
+        + '</div>';
+
+      body += '<div class="panel">'
+        + '<h2>เพิ่มรายการราษฎรใหม่</h2>'
+        + (formMsg ? '<div class="msg '+(formMsg.type==='err'?'err':'ok')+'">'+esc(formMsg.text)+'</div>' : '')
+        + '<fieldset><legend>ข้อมูลบุคคล</legend><div class="grid">'
+          + selectField('prefix','คำนำหน้า',PREFIXES,form.prefix)
+          + textField('first','ชื่อ',form.first)
+          + textField('last','นามสกุล',form.last)
+          + selectField('gender','เพศ',['ชาย','หญิง'],form.gender)
+          + dateField('birth','วันเกิด',form.birth)
+          + textField('nationality','สัญชาติ',form.nationality)
+        + '</div></fieldset>'
+        + '<fieldset><legend>ที่อยู่ตามทะเบียนบ้าน</legend><div class="grid">'
+          + textField('houseNo','บ้านเลขที่',form.houseNo)
+          + textField('moo','หมู่ที่',form.moo)
+          + textField('tambon','ตำบล/แขวง',form.tambon)
+          + textField('amphoe','อำเภอ/เขต',form.amphoe)
+          + textField('province','จังหวัด',form.province)
+        + '</div></fieldset>'
+        + '<label>เลขประจำตัวประชาชน 13 หลัก (สุ่มโดยระบบ)</label>'
+        + '<div class="id-display"><span class="idnum">'+formatId(form.idcard)+'</span>'
+        + '<button type="button" class="secondary" data-regen>สุ่มเลขใหม่</button></div>'
+        + '<button data-submit>บันทึกเข้าทะเบียน</button>'
+        + '</div>';
+
+      body += '<div class="panel">'
+        + '<h2>ทะเบียนราษฎรทั้งหมด</h2>'
+        + '<div class="table-wrap"><table><thead><tr><th>ลำดับ</th><th>เลขบัตรประชาชน</th><th>ชื่อ-สกุล</th><th>วันเกิด</th><th>ที่อยู่</th><th>ผู้บันทึก</th><th></th></tr></thead>'
+        + '<tbody>'+citizenRows(citizens,{full:true})+'</tbody></table></div>'
+        + '</div>';
+
+      body += '<div class="panel">'
+        + '<h2>จัดการรหัสเจ้าหน้าที่</h2>'
+        + (officerMsg ? '<div class="msg '+(officerMsg.type==='err'?'err':'ok')+'">'+esc(officerMsg.text)+'</div>' : '')
+        + officers.map(o=>'<div class="officer-line"><span>'+esc(o.name)+' &middot; รหัส '+esc('•'.repeat(Math.max(o.code.length,4)))+'</span>'
+            + '<button class="danger" data-rm-officer="'+o.id+'">ลบ</button></div>').join('')
+        + '<div class="grid" style="margin-top:16px;">'
+          + textField('newOfficerName','ชื่อเจ้าหน้าที่ใหม่', newOfficer.name)
+          + textField('newOfficerCode','รหัสประจำตัว', newOfficer.code)
+        + '</div>'
+        + '<button class="secondary" data-add-officer>เพิ่มเจ้าหน้าที่</button>'
+        + '</div>';
+    }
+
+    app.innerHTML = header + body;
+
+    if(showGate && !session){
+      const overlay = document.createElement('div');
+      overlay.className = 'overlay';
+      const firstTime = officers.length === 0;
+      overlay.innerHTML = '<div class="gate-card">'
+        + '<h3>'+(firstTime? 'ตั้งค่าเจ้าหน้าที่คนแรก' : 'ยืนยันตัวตนเจ้าหน้าที่')+'</h3>'
+        + '<p class="muted">'+(firstTime? 'ยังไม่มีเจ้าหน้าที่ในระบบ กรุณาสร้างบัญชีแรกเพื่อเริ่มใช้งาน' : 'กรอกรหัสประจำตัวของท่านเพื่อเข้าสู่หน้าเจ้าหน้าที่')+'</p>'
+        + (gateMsg ? '<div class="msg '+(gateMsg.type==='err'?'err':'ok')+'">'+esc(gateMsg.text)+'</div>' : '')
+        + (firstTime
+            ? textField('gateName','ชื่อเจ้าหน้าที่', newOfficer.name) + textField('gateCode','ตั้งรหัสประจำตัว', newOfficer.code)
+            : textField('gateCode','รหัสประจำตัวเจ้าหน้าที่', gateCode))
+        + '<div class="row"><button data-gate-submit>'+(firstTime?'สร้างบัญชี':'เข้าสู่ระบบ')+'</button>'
+        + '<button class="secondary" data-gate-cancel>ยกเลิก</button></div>'
+        + '</div>';
+      app.appendChild(overlay);
+    }
+
+    attachEvents();
+  }
+
+  function textField(id,labelTxt,val){
+    return '<div class="field"><label for="'+id+'">'+esc(labelTxt)+'</label><input id="'+id+'" value="'+esc(val||"")+'"></div>';
+  }
+  function dateField(id,labelTxt,val){
+    return '<div class="field"><label for="'+id+'">'+esc(labelTxt)+'</label><input type="date" id="'+id+'" value="'+esc(val||"")+'"></div>';
+  }
+  function selectField(id,labelTxt,options,val){
+    return '<div class="field"><label for="'+id+'">'+esc(labelTxt)+'</label><select id="'+id+'">'
+      + options.map(o=>'<option value="'+esc(o)+'" '+(o===val?'selected':'')+'>'+esc(o)+'</option>').join('')
+      + '</select></div>';
+  }
+
+  function attachEvents(){
+    const $ = sel => document.querySelector(sel);
+
+    const searchInput = $('#searchInput');
+    if(searchInput) searchInput.addEventListener('input', e=>{ search = e.target.value; render(); document.getElementById('searchInput').focus(); document.getElementById('searchInput').selectionStart = document.getElementById('searchInput').value.length; });
+
+    const openGate = $('[data-open-gate]');
+    if(openGate) openGate.addEventListener('click', ()=>{ showGate=true; gateMsg=null; render(); });
+
+    const gateCancel = $('[data-gate-cancel]');
+    if(gateCancel) gateCancel.addEventListener('click', ()=>{ showGate=false; gateMsg=null; newOfficer={name:"",code:""}; render(); });
+
+    const gateSubmit = $('[data-gate-submit]');
+    if(gateSubmit) gateSubmit.addEventListener('click', ()=>{
+      if(officers.length===0){
+        newOfficer.name = document.getElementById('gateName').value;
+        newOfficer.code = document.getElementById('gateCode').value;
+      } else {
+        gateCode = document.getElementById('gateCode').value;
+      }
+      submitGate();
+    });
+
+    const backBtn = $('[data-back]');
+    if(backBtn) backBtn.addEventListener('click', ()=>{ session=null; render(); });
+    const logoutBtn = $('[data-logout]');
+    if(logoutBtn) logoutBtn.addEventListener('click', logout);
+
+    ['prefix','first','last','gender','birth','nationality','houseNo','moo','tambon','amphoe','province'].forEach(k=>{
+      const el = document.getElementById(k);
+      if(el) el.addEventListener('input', e=>{ form[k]=e.target.value; });
+      if(el) el.addEventListener('change', e=>{ form[k]=e.target.value; });
+    });
+
+    const regen = $('[data-regen]');
+    if(regen) regen.addEventListener('click', ()=>{ form.idcard = generateId(); render(); });
+
+    const submitBtn = $('[data-submit]');
+    if(submitBtn) submitBtn.addEventListener('click', submitCitizen);
+
+    document.querySelectorAll('[data-del]').forEach(btn=>{
+      btn.addEventListener('click', ()=> deleteCitizen(btn.getAttribute('data-del')));
+    });
+
+    const nOName = $('#newOfficerName');
+    if(nOName) nOName.addEventListener('input', e=>{ newOfficer.name = e.target.value; });
+    const nOCode = $('#newOfficerCode');
+    if(nOCode) nOCode.addEventListener('input', e=>{ newOfficer.code = e.target.value; });
+
+    const addOfficerBtn = $('[data-add-officer]');
+    if(addOfficerBtn) addOfficerBtn.addEventListener('click', addOfficer);
+
+    document.querySelectorAll('[data-rm-officer]').forEach(btn=>{
+      btn.addEventListener('click', ()=> removeOfficer(btn.getAttribute('data-rm-officer')));
+    });
+  }
+
+  loadAll();
+})();
+</script>
+</body>
+</html>
