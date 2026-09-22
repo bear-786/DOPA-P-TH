@@ -124,6 +124,7 @@
   let staffCodeInput = "";
   let staffErr = null;
   let staffSearch = "";
+  let showSlowHint = false;
 
   // ---------- CSV parsing (RFC4180-ish) ----------
   function parseCSV(text){
@@ -166,15 +167,21 @@
 
   async function load(){
     loaded = false; loadErr = null; render();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(()=>controller.abort(), 12000);
     try{
-      const res = await fetch(CSV_URL, {cache:"no-store"});
+      const res = await fetch(CSV_URL, {signal: controller.signal});
       if(!res.ok) throw new Error("HTTP "+res.status);
       const text = await res.text();
       const parsed = toObjects(parseCSV(text));
       headers = parsed.headers;
       rows = parsed.rows;
     }catch(e){
-      loadErr = "ไม่สามารถโหลดข้อมูลได้ กรุณาตรวจสอบว่าชีตถูกเผยแพร่แบบสาธารณะ (Publish to web) หรือลองรีเฟรชอีกครั้ง";
+      loadErr = (e && e.name === 'AbortError')
+        ? "การเชื่อมต่ออินเทอร์เน็ตช้าเกินไป กรุณาลองใหม่อีกครั้ง"
+        : "ไม่สามารถโหลดข้อมูลได้ กรุณาตรวจสอบอินเทอร์เน็ต หรือว่าชีตถูกเผยแพร่แบบสาธารณะ (Publish to web) แล้วลองใหม่";
+    }finally{
+      clearTimeout(timeoutId);
     }
     loaded = true;
     render();
@@ -329,7 +336,10 @@
       + '<p>ทะเบียนกลางแห่งราชอาณาจักร &middot; สำหรับตรวจสอบข้อมูลและเรียกดูบัตรของตนเอง</p>'
       + '</div></div>';
 
-    if(!loaded){ app.innerHTML = header + '<p class="muted">กำลังโหลดข้อมูล…</p>'; return; }
+    if(!loaded){
+      app.innerHTML = header + '<p class="muted">กำลังโหลดข้อมูล…'+(showSlowHint ? ' (เครือข่ายช้ากว่าปกติ กรุณารอสักครู่)' : '')+'</p>';
+      return;
+    }
 
     let body = '';
     if(loadErr){
@@ -347,7 +357,7 @@
       body += '<div class="panel">'
         + '<h2>ตรวจสอบและดูบัตรของฉัน</h2>'
         + (verifyErr ? '<div class="msg err">'+esc(verifyErr)+'</div>' : '')
-        + '<div class="field"><label for="nameInput">ชื่อ-นามสกุล</label><input id="nameInput" placeholder="เช่น มาก เมณา" value="'+esc(searchName)+'"></div>'
+        + '<div class="field"><label for="nameInput">ชื่อ-นามสกุล</label><input id="nameInput" placeholder="เช่น นา นาจามา" value="'+esc(searchName)+'"></div>'
         + '<div class="field"><label for="idInput">เลขบัตรประจำตัวประชาชน</label><input id="idInput" placeholder="เลข 13 หลัก" value="'+esc(searchId)+'"></div>'
         + '<button data-verify>ตรวจสอบและดูบัตร</button>'
         + '</div>';
@@ -441,16 +451,6 @@
     if(staffLogoutBtn) staffLogoutBtn.addEventListener('click', staffLogout);
 
     const staffSearchEl = $('#staffSearchInput');
-    if(staffCodeEl){
-      staffCodeEl.addEventListener('input', e=>{ staffCodeInput = e.target.value; });
-      staffCodeEl.addEventListener('keydown', e=>{ if(e.key === 'Enter') staffLogin(); });
-    }
-    const staffLoginBtn = $('[data-staff-login]');
-    if(staffLoginBtn) staffLoginBtn.addEventListener('click', staffLogin);
-    const staffLogoutBtn = $('[data-staff-logout]');
-    if(staffLogoutBtn) staffLogoutBtn.addEventListener('click', staffLogout);
-
-    const staffSearchEl = $('#staffSearchInput');
     if(staffSearchEl){
       staffSearchEl.addEventListener('input', e=>{
         staffSearch = e.target.value;
@@ -490,6 +490,7 @@
   }
 
   load();
+  setTimeout(()=>{ if(!loaded){ showSlowHint = true; render(); } }, 5000);
 })();
 </script>
 </body>
