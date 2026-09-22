@@ -108,12 +108,22 @@
 (function(){
   const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQIMcyu-vPWnjoXfQC1pe-_GbadA0X4dv5LDZos60PkU-AUHk6JP1BUVlcA-GJKs0AHDznZq5Eud9EI/pub?output=csv";
 
+  const STAFF_CODE = "STAFF_DOPA-TH-P"; // เปลี่ยนรหัสสำหรับเจ้าหน้าที่ตรงนี้
+
   let headers = [];
   let rows = [];        // array of objects keyed by header
   let loaded = false;
   let loadErr = null;
-  let search = "";
+  let searchName = "";
+  let searchId = "";
+  let verifyErr = null;
   let openCard = null;  // the row object currently shown in the ID card modal
+
+  let staffMode = false;
+  let staffGateOpen = false;
+  let staffCodeInput = "";
+  let staffErr = null;
+  let staffSearch = "";
 
   // ---------- CSV parsing (RFC4180-ish) ----------
   function parseCSV(text){
@@ -229,33 +239,46 @@
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>';
   }
 
-  function filteredRows(){
-    if(!search.trim()) return [];
-    const q = search.trim().toLowerCase();
-    return rows.filter(r => String(buildName(r) || "").toLowerCase().includes(q));
+  function normId(v){ return String(v||"").replace(/[^0-9]/g,""); }
+
+  function verify(){
+    verifyErr = null;
+    const nameQ = searchName.trim().toLowerCase();
+    const idQ = normId(searchId);
+    if(!nameQ || !idQ){
+      verifyErr = "กรุณากรอกทั้งชื่อ-นามสกุล และเลขบัตรประชาชนให้ครบ";
+      render(); return;
+    }
+    const match = rows.find(r => normId(buildIdField(r)) === idQ && String(buildName(r)||"").toLowerCase().includes(nameQ));
+    if(!match){
+      verifyErr = "ไม่พบข้อมูลที่ตรงกันทั้งชื่อและเลขบัตรประชาชน กรุณาตรวจสอบอีกครั้ง";
+      openCard = null;
+      render(); return;
+    }
+    openCard = match;
+    render();
   }
 
-  function renderTable(){
-    if(!search.trim()){
-      return '<p class="muted">พิมพ์ชื่อเพื่อค้นหา</p>';
+  function staffLogin(){
+    staffErr = null;
+    if(staffCodeInput.trim() !== STAFF_CODE){
+      staffErr = "รหัสเจ้าหน้าที่ไม่ถูกต้อง";
+      render(); return;
     }
-    const list = filteredRows();
-    const cols = headers.slice(0, 6); // keep the ledger compact
-    if(list.length === 0){
-      return '<p class="muted">ไม่พบชื่อที่ค้นหา</p>';
-    }
-    let html = '<div class="table-wrap"><table><thead><tr><th>ลำดับ</th>'
-      + cols.map(h=>'<th>'+esc(h)+'</th>').join('')
-      + '<th></th></tr></thead><tbody>';
-    list.forEach((r,i)=>{
-      html += '<tr>'
-        + '<td>'+(i+1)+'</td>'
-        + cols.map(h => '<td class="'+(looksLikeId(r[h])?'idnum':'')+'">'+esc(looksLikeId(r[h]) ? formatId(r[h]) : r[h])+'</td>').join('')
-        + '<td><button class="secondary small" data-view="'+i+'">ดูบัตร</button></td>'
-        + '</tr>';
-    });
-    html += '</tbody></table></div>';
-    return html;
+    staffMode = true;
+    staffGateOpen = false;
+    staffCodeInput = "";
+    render();
+  }
+  function staffLogout(){
+    staffMode = false;
+    staffSearch = "";
+    render();
+  }
+  function staffFilteredRows(){
+    if(!staffSearch.trim()) return rows;
+    const q = staffSearch.trim().toLowerCase();
+    return rows.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(q)));
   }
 
   function renderCardModal(row){
@@ -314,17 +337,41 @@
     } else {
       body += '<div class="row" style="margin-bottom:20px;">'
         + '<div><span class="stat">'+rows.length+'</span> <span class="stat-label">ราย ขึ้นทะเบียนแล้ว</span></div>'
-        + '<button class="secondary" data-reload>รีเฟรชข้อมูล</button>'
+        + '<div>'
+        + '<button class="secondary" data-reload>รีเฟรชข้อมูล</button> '
+        + (staffMode
+            ? '<button class="secondary" data-staff-logout>ออกจากโหมดเจ้าหน้าที่</button>'
+            : '<button class="secondary" data-staff-open>สำหรับเจ้าหน้าที่</button>')
+        + '</div>'
         + '</div>';
       body += '<div class="panel">'
-        + '<h2>ค้นหาทะเบียนราษฎรจากชื่อ</h2>'
-        + '<div class="field search" style="margin-bottom:16px;"><input id="searchInput" placeholder="พิมพ์ชื่อหรือนามสกุล" value="'+esc(search)+'"></div>'
-        + renderTable()
+        + '<h2>ตรวจสอบและดูบัตรของฉัน</h2>'
+        + (verifyErr ? '<div class="msg err">'+esc(verifyErr)+'</div>' : '')
+        + '<div class="field"><label for="nameInput">ชื่อ-นามสกุล</label><input id="nameInput" placeholder="เช่น มาก เมณา" value="'+esc(searchName)+'"></div>'
+        + '<div class="field"><label for="idInput">เลขบัตรประจำตัวประชาชน</label><input id="idInput" placeholder="เลข 13 หลัก" value="'+esc(searchId)+'"></div>'
+        + '<button data-verify>ตรวจสอบและดูบัตร</button>'
         + '</div>';
+
+      if(staffMode){
+        body += renderStaffPanel();
+      }
     }
-    body += '<p class="footer-note">กดปุ่ม "ดูบัตร" ที่แถวของตนเองเพื่อเรียกดูบัตรประจำตัวแบบเต็ม</p>';
+    body += '<p class="footer-note">กรอกชื่อและเลขบัตรประชาชนของตนเองให้ตรงกันเพื่อเรียกดูบัตร ระบบจะไม่แสดงบัตรของผู้อื่น</p>';
 
     app.innerHTML = header + body;
+
+    if(staffGateOpen){
+      const wrap = document.createElement('div');
+      wrap.innerHTML = '<div class="overlay" data-staff-close-overlay>'
+        + '<div class="card-wrap" onclick="event.stopPropagation()" style="max-width:320px;">'
+        + '<h3 style="margin-top:0;">เข้าสู่ระบบเจ้าหน้าที่</h3>'
+        + '<p class="muted">กรอกรหัสเจ้าหน้าที่เพื่อดูทะเบียนราษฎรทั้งหมด</p>'
+        + (staffErr ? '<div class="msg err">'+esc(staffErr)+'</div>' : '')
+        + '<div class="field"><label for="staffCodeInput">รหัสเจ้าหน้าที่</label><input id="staffCodeInput" type="password" value="'+esc(staffCodeInput)+'"></div>'
+        + '<div class="row"><button data-staff-login>เข้าสู่ระบบ</button><button class="secondary" data-staff-cancel>ยกเลิก</button></div>'
+        + '</div></div>';
+      app.appendChild(wrap.firstChild);
+    }
 
     if(openCard){
       const wrap = document.createElement('div');
@@ -334,27 +381,92 @@
     attach();
   }
 
+  function renderStaffPanel(){
+    const list = staffFilteredRows();
+    const cols = headers.slice(0, 7);
+    let html = '<div class="panel">'
+      + '<h2>ทะเบียนราษฎรทั้งหมด (สำหรับเจ้าหน้าที่)</h2>'
+      + '<div class="field search" style="margin-bottom:16px;"><input id="staffSearchInput" placeholder="ค้นหาทุกคอลัมน์" value="'+esc(staffSearch)+'"></div>';
+    if(list.length === 0){
+      html += '<p class="muted">ไม่พบข้อมูล</p>';
+    } else {
+      html += '<div class="table-wrap"><table><thead><tr><th>ลำดับ</th>'
+        + cols.map(h=>'<th>'+esc(h)+'</th>').join('')
+        + '<th></th></tr></thead><tbody>';
+      list.forEach((r,i)=>{
+        html += '<tr>'
+          + '<td>'+(i+1)+'</td>'
+          + cols.map(h => '<td class="'+(looksLikeId(r[h])?'idnum':'')+'">'+esc(looksLikeId(r[h]) ? formatId(r[h]) : r[h])+'</td>').join('')
+          + '<td><button class="secondary small" data-staff-view="'+i+'">ดูบัตร</button></td>'
+          + '</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
   function attach(){
     const $ = s => document.querySelector(s);
-    const si = $('#searchInput');
-    if(si){
-      si.addEventListener('input', e=>{
-        search = e.target.value;
-        render();
-        const el = document.getElementById('searchInput');
-        if(el){ el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
-      });
+    const ni = $('#nameInput');
+    if(ni){
+      ni.addEventListener('input', e=>{ searchName = e.target.value; });
+      ni.addEventListener('keydown', e=>{ if(e.key === 'Enter') verify(); });
     }
+    const idi = $('#idInput');
+    if(idi){
+      idi.addEventListener('input', e=>{ searchId = e.target.value; });
+      idi.addEventListener('keydown', e=>{ if(e.key === 'Enter') verify(); });
+    }
+    const verifyBtn = $('[data-verify]');
+    if(verifyBtn) verifyBtn.addEventListener('click', verify);
+
     const reload = $('[data-reload]');
     if(reload) reload.addEventListener('click', load);
 
-    document.querySelectorAll('[data-view]').forEach(btn=>{
+    const staffOpen = $('[data-staff-open]');
+    if(staffOpen) staffOpen.addEventListener('click', ()=>{ staffGateOpen = true; staffErr = null; render(); });
+    const staffCancel = $('[data-staff-cancel]');
+    if(staffCancel) staffCancel.addEventListener('click', ()=>{ staffGateOpen = false; staffCodeInput = ""; staffErr = null; render(); });
+    const staffCloseOverlay = $('[data-staff-close-overlay]');
+    if(staffCloseOverlay) staffCloseOverlay.addEventListener('click', ()=>{ staffGateOpen = false; staffCodeInput = ""; staffErr = null; render(); });
+    const staffCodeEl = $('#staffCodeInput');
+    if(staffCodeEl){
+      staffCodeEl.addEventListener('input', e=>{ staffCodeInput = e.target.value; });
+      staffCodeEl.addEventListener('keydown', e=>{ if(e.key === 'Enter') staffLogin(); });
+    }
+    const staffLoginBtn = $('[data-staff-login]');
+    if(staffLoginBtn) staffLoginBtn.addEventListener('click', staffLogin);
+    const staffLogoutBtn = $('[data-staff-logout]');
+    if(staffLogoutBtn) staffLogoutBtn.addEventListener('click', staffLogout);
+
+    const staffSearchEl = $('#staffSearchInput');
+    if(staffCodeEl){
+      staffCodeEl.addEventListener('input', e=>{ staffCodeInput = e.target.value; });
+      staffCodeEl.addEventListener('keydown', e=>{ if(e.key === 'Enter') staffLogin(); });
+    }
+    const staffLoginBtn = $('[data-staff-login]');
+    if(staffLoginBtn) staffLoginBtn.addEventListener('click', staffLogin);
+    const staffLogoutBtn = $('[data-staff-logout]');
+    if(staffLogoutBtn) staffLogoutBtn.addEventListener('click', staffLogout);
+
+    const staffSearchEl = $('#staffSearchInput');
+    if(staffSearchEl){
+      staffSearchEl.addEventListener('input', e=>{
+        staffSearch = e.target.value;
+        render();
+        const el = document.getElementById('staffSearchInput');
+        if(el){ el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
+      });
+    }
+    document.querySelectorAll('[data-staff-view]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
-        const idx = parseInt(btn.getAttribute('data-view'),10);
-        openCard = filteredRows()[idx];
+        const idx = parseInt(btn.getAttribute('data-staff-view'),10);
+        openCard = staffFilteredRows()[idx];
         render();
       });
     });
+
     const closeBtn = $('[data-close]');
     if(closeBtn) closeBtn.addEventListener('click', ()=>{ openCard = null; render(); });
     const overlay = $('[data-close-overlay]');
@@ -375,151 +487,6 @@
         downloadBtn.disabled = false;
       }).catch(()=>{ downloadBtn.disabled = false; });
     });
-  }
-
-  load();
-})();
-</script>
-</body>
-</html>
-e" stroke="var(--seal)" stroke-width="1.2"/>'
-      + '<polygon points="50,28 56,45 74,45 59,56 65,73 50,62 35,73 41,56 26,45 44,45" fill="var(--seal)" opacity="0.85"/>'
-      + '</svg>';
-  }
-  function personSvg(){
-    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>';
-  }
-
-  function filteredRows(){
-    if(!search.trim()) return rows;
-    const q = search.trim().toLowerCase();
-    return rows.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(q)));
-  }
-
-  function renderTable(){
-    const list = filteredRows();
-    const cols = headers.slice(0, 6); // keep the ledger compact
-    let html = '<div class="table-wrap"><table><thead><tr><th>ลำดับ</th>'
-      + cols.map(h=>'<th>'+esc(h)+'</th>').join('')
-      + '<th></th></tr></thead><tbody>';
-    if(list.length === 0){
-      html += '<tr class="empty-row"><td colspan="'+(cols.length+2)+'">ไม่พบข้อมูล</td></tr>';
-    } else {
-      list.forEach((r,i)=>{
-        html += '<tr>'
-          + '<td>'+(i+1)+'</td>'
-          + cols.map(h => '<td class="'+(looksLikeId(r[h])?'idnum':'')+'">'+esc(looksLikeId(r[h]) ? formatId(r[h]) : r[h])+'</td>').join('')
-          + '<td><button class="secondary small" data-view="'+i+'">ดูบัตร</button></td>'
-          + '</tr>';
-      });
-    }
-    html += '</tbody></table></div>';
-    return html;
-  }
-
-  function renderCardModal(row){
-    const name = buildName(row) || "-";
-    const idRaw = buildIdField(row);
-    const birth = buildBirth(row);
-    const addr = buildAddress(row);
-    const photo = buildPhoto(row);
-    const knownKeys = new Set();
-    [findHeader(["คำนำหน้า","prefix"]), findHeader(["ชื่อ","first"]), findHeader(["นามสกุล","สกุล","last"]),
-     findHeader(["ชื่อ-สกุล","ชื่อเต็ม","fullname","full name"]),
-     findHeader(["เกิด","birth"]),
-     findHeader(["ผู้บันทึก","บันทึกโดย","officer"]),
-     findHeader(["รูปบัตร","รูปภาพ","รูปถ่าย","photo","image"])
-    ].forEach(k=>k&&knownKeys.add(k));
-    headers.filter(h => ["บ้านเลขที่","หมู่","ตำบล","แขวง","อำเภอ","เขต","จังหวัด","ที่อยู่"].some(k=>h.includes(k))).forEach(h=>knownKeys.add(h));
-    if(idRaw !== null){ const idH = findHeader(["เลขบัตร","เลขประจำตัวประชาชน","เลขประชาชน","idcard","id card","เลขที่บัตร"]) || headers.find(h=>looksLikeId(row[h])); if(idH) knownKeys.add(idH); }
-
-    const extraRows = headers.filter(h => !knownKeys.has(h) && row[h])
-      .map(h => '<dt>'+esc(h)+'</dt><dd>'+esc(row[h])+'</dd>')
-      .join('');
-
-    return '<div class="overlay" data-close-overlay>'
-      + '<div class="card-wrap" onclick="event.stopPropagation()">'
-      + '<div class="close-row"><button class="secondary small" data-print>พิมพ์</button><button class="secondary small" data-close>ปิด</button></div>'
-      + '<div class="idcard">'
-        + '<div class="idcard-head"><div class="mini-seal">'+sealSvg()+'</div><b>บัตรประจำตัวราษฎร</b></div>'
-        + '<div class="idcard-body">'
-          + '<div class="avatar">'+(photo ? '<img src="'+esc(photo)+'" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:3px;">' : personSvg())+'</div>'
-          + '<div class="idcard-fields">'
-            + '<div class="name-line">'+esc(name)+'</div>'
-            + '<dl>'
-              + (birth ? '<dt>เกิด</dt><dd>'+esc(birth)+'</dd>' : '')
-              + (addr ? '<dt>ที่อยู่</dt><dd>'+esc(addr)+'</dd>' : '')
-              + extraRows
-            + '</dl>'
-            + (idRaw ? '<div class="idcard-id">'+esc(formatId(idRaw))+'</div>' : '')
-          + '</div>'
-        + '</div>'
-      + '</div>'
-      + '</div></div>';
-  }
-
-  function render(){
-    const app = document.getElementById('app');
-    const header = '<div class="letterhead"><div class="seal">'+sealSvg()+'</div><div>'
-      + '<h1>ระบบทะเบียนราษฎร</h1>'
-      + '<p>ทะเบียนกลางแห่งราชอาณาจักร &middot; สำหรับตรวจสอบข้อมูลและเรียกดูบัตรของตนเอง</p>'
-      + '</div></div>';
-
-    if(!loaded){ app.innerHTML = header + '<p class="muted">กำลังโหลดข้อมูล…</p>'; return; }
-
-    let body = '';
-    if(loadErr){
-      body += '<div class="msg err">'+esc(loadErr)+'</div><button class="secondary" data-reload>ลองใหม่</button>';
-    } else {
-      body += '<div class="row" style="margin-bottom:20px;">'
-        + '<div><span class="stat">'+rows.length+'</span> <span class="stat-label">ราย ขึ้นทะเบียนแล้ว</span></div>'
-        + '<button class="secondary" data-reload>รีเฟรชข้อมูล</button>'
-        + '</div>';
-      body += '<div class="panel">'
-        + '<h2>ค้นหาทะเบียนราษฎร</h2>'
-        + '<div class="field search" style="margin-bottom:16px;"><input id="searchInput" placeholder="ค้นหาชื่อ นามสกุล หรือเลขบัตรประชาชน" value="'+esc(search)+'"></div>'
-        + renderTable()
-        + '</div>';
-    }
-    body += '<p class="footer-note">กดปุ่ม "ดูบัตร" ที่แถวของตนเองเพื่อเรียกดูบัตรประจำตัวแบบเต็ม</p>';
-
-    app.innerHTML = header + body;
-
-    if(openCard){
-      const wrap = document.createElement('div');
-      wrap.innerHTML = renderCardModal(openCard);
-      app.appendChild(wrap.firstChild);
-    }
-    attach();
-  }
-
-  function attach(){
-    const $ = s => document.querySelector(s);
-    const si = $('#searchInput');
-    if(si){
-      si.addEventListener('input', e=>{
-        search = e.target.value;
-        render();
-        const el = document.getElementById('searchInput');
-        if(el){ el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
-      });
-    }
-    const reload = $('[data-reload]');
-    if(reload) reload.addEventListener('click', load);
-
-    document.querySelectorAll('[data-view]').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const idx = parseInt(btn.getAttribute('data-view'),10);
-        openCard = filteredRows()[idx];
-        render();
-      });
-    });
-    const closeBtn = $('[data-close]');
-    if(closeBtn) closeBtn.addEventListener('click', ()=>{ openCard = null; render(); });
-    const overlay = $('[data-close-overlay]');
-    if(overlay) overlay.addEventListener('click', ()=>{ openCard = null; render(); });
-    const printBtn = $('[data-print]');
-    if(printBtn) printBtn.addEventListener('click', ()=> window.print());
   }
 
   load();
